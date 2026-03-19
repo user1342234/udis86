@@ -378,7 +378,7 @@ ud_set_input_hook(register struct ud* u, int (*hook)(struct ud*))
  * =============================================================================
  */
 void 
-ud_set_input_buffer(register struct ud* u, const uint8_t* buf, size_t len)
+ud_set_input_buffer(register struct ud* u, uint8_t* buf, size_t len)
 {
   ud_inp_init(u);
   u->inp_buf = buf;

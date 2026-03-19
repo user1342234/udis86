@@ -1,40 +1,29 @@
 # normalize-x86-64
 
 This branch is used to normalize an x86-64 buffer by:\
-    - Replacing rip-relative instructions: `mov eax, [rip+12345h]` => `mov eax, [rip+0x1]`\
-    - Replacing registers: `movzx rdx, eax` => `movzx rax, eax`
-
-Example:
-```asm
-mov rax, rdx     
-movzx rbx, al       
-movzx rsi, dl
-```
-=> 
-```asm
-mov rax, rax
-movzx rax, al
-movzx rax, al
-```
+    - Replacing rip-relative instructions: `mov rax, [rip+0x12345]` => ` mov rax, [rip+0xffffff]`\
+    - Replacing registers: `movzx rdx, eax` => `movzx rax, eax`\
+    - Replacing memory references: `mov rax, [rbp-0x8]` => `mov rax, [rbx-0x1]`\
+    *Note: The displacement 0x8 has been replaced/normalized with 0xff which is then interpreted as -1.
 
 ## Purpose
-The normalization is precursory step to compare simliarities of functions using by their bytes. By normalizing these functions, their bytes become standardized but still maintain information like below:
+The normalization is precursory step to compare simliarities of functions using by their bytes. By normalizing these functions, rip-relative instructions, memory references, and register names are all standardized to specific values.
 
 ```asm
 mov rax, rdx
-movzx rbx, eax
-movzx rbx, al
-jmp qword ptr [rip+19h]
+movzx rbx, bl
+movzx rcx, al
+jmp   qword ptr [rip + 0x19]
 ```
 =>
 
 ```asm
-mov r64, r64
-movzx r64 , r32
-movzx r64, r8
-jmp qword ptr [rip+1h]*
+mov rax, rax
+movzx rax, al
+movzx rax, al
+jmp qword [rip+0xff]
 ```
-*Note: jmp/call instructions offsets are changed into section references. For example, `jmp` to `.text` could be offset `0x1`. `jmp` to an import could be offset `0x2`. Offsets are chosen incrementally when parsing sections.
+
 The register normals (r64, r8, etc) are written to their families first register. 
 `xmm0,xmm1,...->xmm0`\
 `rax,rdx,rbx,...->rax`\

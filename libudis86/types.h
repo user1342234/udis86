@@ -177,7 +177,7 @@ struct ud
 #ifndef __UD_STANDALONE__
   FILE*     inp_file;
 #endif
-  const uint8_t* inp_buf;
+   uint8_t* inp_buf;
   size_t    inp_buf_size;
   size_t    inp_buf_index;
   uint8_t   inp_curr;

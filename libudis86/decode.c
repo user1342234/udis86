@@ -483,7 +483,29 @@ decode_imm(struct ud* u, unsigned int size, struct ud_operand *op)
   }
 }
 
+uint64_t normalize_displacement(uint64_t disp) {
+    if (disp == 0) return 0;
+    uint64_t mask = 0xf;
+    while (mask < disp) {
+        mask = (mask << 4) | 0xf;
+    }
+    return mask;
+}
 
+static void patch_mem_displacement(struct ud* u, struct ud_operand* op) {
+    uint8_t has_sib = ((MODRM_RM(u->modrm) & 7) == 4) && (op->base != UD_R_RIP);
+    uint32_t disp_offset = u->pc + u->modrm_offset + 1 + has_sib;
+
+    switch (op->offset) {
+    case 8:
+        u->inp_buf[disp_offset] = u->inp_buf[disp_offset] != 0x00 ? 0xff : 0x00;
+        break;
+    case 32:
+        for (int i = 0; i < 4; i++)
+            u->inp_buf[disp_offset + i] = u->inp_buf[disp_offset + i] != 0x00 ? 0xff : 0x00;
+        break;
+    }
+}
 /* 
  * decode_mem_disp
  *
@@ -515,6 +537,16 @@ decode_mem_disp(struct ud* u, unsigned int size, struct ud_operand *op)
 }
 
 
+static void patch_modrm_reg(struct ud* u, uint8_t original_reg) {
+    uint32_t abs_offset = u->pc + u->modrm_offset;
+    u->inp_buf[abs_offset] = (u->inp_buf[abs_offset] & ~0x38) | 0;
+}
+
+static void patch_modrm_rm(struct ud* u, uint8_t original_rm) {
+    uint32_t abs_offset = u->pc + u->modrm_offset;
+    u->inp_buf[abs_offset] = (u->inp_buf[abs_offset] & ~0x07) | 0;
+}
+
 /*
  * decode_modrm_reg
  *
@@ -529,6 +561,8 @@ decode_modrm_reg(struct ud         *u,
 {
   uint8_t reg = (REX_R(u->_rex) << 3) | MODRM_REG(modrm(u));
   decode_reg(u, operand, type, reg, size);
+  if (operand->type == UD_OP_REG)
+    patch_modrm_reg(u, reg);
 }
 
 
@@ -558,6 +592,8 @@ decode_modrm_rm(struct ud         *u,
    */
   if (mod == 3) {
     decode_reg(u, op, type, rm, size);
+    if (op->type == UD_OP_REG)
+        patch_modrm_rm(u, rm);
     return;
   }
 
@@ -587,6 +623,22 @@ decode_modrm_rm(struct ud         *u,
       
       op->base  = UD_R_RAX + (SIB_B(inp_curr(u)) | (REX_B(u->_rex) << 3));
       op->index = UD_R_RAX + (SIB_I(inp_curr(u)) | (REX_X(u->_rex) << 3));
+
+      uint8_t sib_offset = u->pc + u->modrm_offset + 1;
+      uint8_t sib = u->inp_buf[sib_offset];
+      uint8_t scale = sib & 0xC0;  // keep scale bits [7:6]
+      uint8_t new_index = 0x00;    // normalize index to 0 (RAX)
+      uint8_t new_base = 0x00;    // normalize base to 0 (RAX)
+
+      uint8_t orig_base = sib & 0x7;
+      uint8_t mod = MODRM_MOD(u->modrm);
+
+      // base=101 with mod=00 is special "no base" encoding, preserve it
+      if (orig_base == 5 && mod == 0)
+          new_base = 5;
+
+      u->inp_buf[sib_offset] = scale | new_index | new_base;
+
       /* special conditions for base reference */
       if (op->index == UD_R_RSP) {
         op->index = UD_NONE;
@@ -670,6 +722,7 @@ decode_modrm_rm(struct ud         *u,
 
   if (offset) {
     decode_mem_disp(u, offset, op);
+    patch_mem_displacement(u, op);
   } else {
     op->offset = 0;
   }
