@@ -462,34 +462,42 @@ decode_reg(struct ud *u,
   opr->size = size;
 }
 
-
 /*
  * decode_imm 
  *
  *    Decode Immediate values.
  */
-static void 
-decode_imm(struct ud* u, unsigned int size, struct ud_operand *op)
+static void
+decode_imm(struct ud* u, unsigned int size, struct ud_operand* op)
 {
-  op->size = resolve_operand_size(u, size);
-  op->type = UD_OP_IMM;
+    op->size = resolve_operand_size(u, size);
+    op->type = UD_OP_IMM;
 
-  switch (op->size) {
-  case  8: op->lval.sbyte = inp_uint8(u);   break;
-  case 16: op->lval.uword = inp_uint16(u);  break;
-  case 32: op->lval.udword = inp_uint32(u); break;
-  case 64: op->lval.uqword = inp_uint64(u); break;
-  default: return;
-  }
-}
 
-uint64_t normalize_displacement(uint64_t disp) {
-    if (disp == 0) return 0;
-    uint64_t mask = 0xf;
-    while (mask < disp) {
-        mask = (mask << 4) | 0xf;
+    uint32_t imm_start;
+    switch (op->size) {
+    case  8:
+        imm_start = u->inp_buf_index;
+        op->lval.sbyte = inp_uint8(u);
+        break;
+    case 16:
+        imm_start = u->inp_buf_index;
+        op->lval.uword = inp_uint16(u);
+        break;
+    case 32:
+        imm_start = u->inp_buf_index;
+        op->lval.udword = inp_uint32(u);
+        break;
+    case 64:
+        imm_start = u->inp_buf_index;
+        op->lval.uqword = inp_uint64(u);
+        break;
+    default: return;
     }
-    return mask;
+
+    uint8_t imm_size_bytes = op->size / 8;
+    for (int i = 0; i < imm_size_bytes; i++)
+        u->inp_buf[imm_start + i] = u->inp_buf[imm_start + i] != 0x00 ? 0xff : 0x00;
 }
 
 static void patch_mem_displacement(struct ud* u, struct ud_operand* op) {
@@ -506,6 +514,7 @@ static void patch_mem_displacement(struct ud* u, struct ud_operand* op) {
         break;
     }
 }
+
 /* 
  * decode_mem_disp
  *
